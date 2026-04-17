@@ -1,0 +1,345 @@
+
+<br>
+<center><img src="https://i.imgur.com/AbCCpQO.png" width="700"></center>
+
+
+_____
+
+# Spatial data and Interactive maps
+
+
+```{r}
+rm(list = ls()) # start fresh
+
+library(sf)
+contrib_zipMap=st_read("https://github.com/DACSS-Visual/SpatialData/raw/main/contrib_polygons_light.gpkg")
+wa_simple <- read_sf('https://github.com/DACSS-Visual/SpatialData/raw/main/maps/WA_State_Boundary.geojson')
+```
+
+```{r}
+names(contrib_zipMap)
+```
+
+Interactive maps are useful when readers need to zoom in and explore the map directly in the browser. Here we use the `leaflet` package.
+
+# A simple interactive map
+
+Leaflet works like this:
+```{r}
+library(leaflet)
+
+leafletObject<- leaflet() %>% # create the leaflet object
+                  addTiles() # add the background
+leafletObject
+```
+
+
+Given we have the `wa_simple` object, we simply **add** its polygons:
+
+```{r}
+leafletObject%>%
+  addPolygons(
+    data = wa_simple)
+```
+
+Let's add some details to create our `baseMap`:
+```{r}
+baseMap<-leafletObject%>%
+  addPolygons(
+    data = wa_simple,
+    fillColor = "white", #polygon(s) fill color
+    weight = 0,    # border width
+    fillOpacity = 1) # 0 is totally trasparent, 1 full color
+
+baseMap
+
+```
+
+
+
+# A simple choropleth
+
+
+We begin with one example: Republican contributions in 2012.
+
+### 1. Subset to create `map_Rep2012`:
+
+```{r}
+map_Rep2012 <- contrib_zipMap[
+  contrib_zipMap$election_year == 2012 &
+  contrib_zipMap$party == "REPUBLICAN", ]
+```
+
+### 2. Create a color palette for **share_contributions_cat** using `colorFactor()`:
+
+```{r, message=FALSE}
+
+paletteFun <- colorFactor(
+                  palette = "YlOrRd",
+                  domain = map_Rep2012$share_contributions_cat
+              )
+```
+
+### 3. Commonly, we create labels for hover text
+
+```{r}
+popUp_labels <- sprintf(
+                  "<strong>%s</strong>",
+                  map_Rep2012$ZCTA5CE10
+                ) |> lapply(htmltools::HTML)
+```
+
+### 4. First draft, adding the polygons from `map_Rep2012`
+
+```{r}
+Rep2012 <- baseMap %>%
+  addPolygons(
+    data = map_Rep2012
+  )
+
+Rep2012
+```
+
+
+### 5. Now add the fill color
+
+```{r}
+Rep2012 <- baseMap %>%
+  addPolygons(
+    data = map_Rep2012,
+    fillColor = ~paletteFun(share_contributions_cat)
+  )
+
+Rep2012
+```
+
+### 6. Final Touches
+
+* **Retouching the polygons:**
+
+```{r}
+Rep2012 <- baseMap %>%
+  addPolygons(
+    data = map_Rep2012,
+    fillColor = ~paletteFun(share_contributions_cat),
+    stroke = FALSE,# no border
+    fillOpacity = 0.8, # improve light
+    label = popUp_labels, #text when hovering
+    ## optional
+    labelOptions = labelOptions(
+      textsize = "15px") # change size of text
+  )
+
+Rep2012
+
+```
+
+
+* **Adding a legend**
+
+```{r}
+Rep2012 %>%
+  addLegend(
+    data = map_Rep2012,
+    values = ~share_contributions_cat,
+    pal = paletteFun,
+    title = "Contributions",
+    position = "bottomright"
+  )
+```
+
+
+# Interacting layers with legend
+
+Now we create a map where each contribution category is a separate layer. This allows users to turn categories on and off.
+
+We use Democratic contributions in 2012. Remember we have these levels:
+
+```{r}
+theLabelsForLevels <- sort(unique(contrib_zipMap$share_contributions_cat))
+theLabelsForLevels
+```
+
+Let's subset to keep democrats in 2012
+
+```{r}
+contribWA2012_demo <- contrib_zipMap[
+  contrib_zipMap$election_year == 2012 &
+  contrib_zipMap$party == "DEMOCRAT", ]
+```
+
+
+Different than before, we will write the color manually. Let's use a color safe [palette] (https://colorbrewer2.org/). Here I will use the colors of the diverging palette "PuOr" for 4 levels (I will copy and paste them into a vector). Notice I will use _transparency_('fillOpacity') for the most common levels:
+
+```{r}
+# the colors
+PuOr <- c("#e66101", "#fdb863", "#b2abd2", "#5e3c99")
+
+# the opacity for each
+theOpacity <- c(1, 0.5, 0.5, 1)
+```
+
+
+Let's take advantage of the `split()` function:
+
+
+```{r}
+demo_splitted <- split(x = contribWA2012_demo,
+                       f = contribWA2012_demo$share_contributions_cat)
+
+```
+
+
+`demo_splitted` is a list of 4 dataframes, one for each category in **share_contributions_cat**
+
+```{r}
+length(demo_splitted)
+```
+
+Take a look at this *old-fashioned* for loop:
+```{r}
+
+for (i in 1:length(demo_splitted)) {
+      print(dim(demo_splitted[[i]])) # the dataframe i's dimensions
+      print(PuOr[i]) # the dataframe i's color
+      print(theOpacity[i]) # the dataframe i's opacity
+      print(names(demo_splitted)[i]) # the dataframe i's group or category
+
+  }
+```
+
+As you see, you can visit those important objects in parallel. Let's use that to build the FOUR leaflet maps, and plot one on top of the other:
+
+```{r}
+map2012_demo <- baseMap
+
+for (i in 1:length(demo_splitted)) {
+      map2012_demo <- map2012_demo %>%
+                        addPolygons(
+                          stroke = FALSE,
+                          data = demo_splitted[[i]],
+                          color = PuOr[i],
+                          fillOpacity = theOpacity[i],
+                          # this is the most important!!
+                          group = names(demo_splitted)[i]
+                        )}
+map2012_demo
+```
+
+ABove you see o difference, but here you will the effect of `group = names(demo_splitted)[i]`
+```{r}
+map2012_demo <- map2012_demo %>%
+                  addLayersControl(
+                    overlayGroups = theLabelsForLevels,
+                    options = layersControlOptions(collapsed = FALSE))
+
+map2012_demo
+```
+
+
+Notice that if you start zooming in, it might be difficult to go back to a whole view of our main map. Leaflet does not give you a **home** button by default. This code helps you with that:
+```{r}
+# prepare the button with the coordinate and zoom level (7)
+textFun <- "function(btn, map){map.setView([47.751076, -120.740135], 7)}"
+
+## adding it
+finalZoom <- map2012_demo %>%
+                addEasyButton(
+                  easyButton(
+                    icon = "fa-home",
+                    title = "Zoom to Washington",
+                    onClick = JS(textFun)
+                  )
+                )
+  
+finalZoom
+```
+
+
+# Interactive maps of spatial points
+
+```{r}
+library(sf)
+contriWA_1216_RD_points=st_read("contrib_points.gpkg")
+
+```
+
+
+**Leaflet** is a good option too for spatial points. But not all strategies are good. 
+
+This strategy will plot every point, but since they are more than 300 000, that might not be a good idea (I will not run this code, but you can try it) : 
+
+```{r, eval=FALSE,warning=FALSE, echo=TRUE}
+
+leaflet(contriWA_1216_RD_points) %>%
+    addTiles() %>%
+    addCircleMarkers(stroke = F, radius = 0.5)
+```
+
+Leaflet offers this smart alternative:
+```{r}
+leaflet(contriWA_1216_RD_points) %>%
+    addTiles() %>%
+    addCircleMarkers(stroke = F, 
+                     clusterOptions = markerClusterOptions())
+
+```
+
+The previous map aggregated all the data and show you the counts by closeness, which changes dynamically as you zoom in or out. Let me split by party for 2016:
+
+* Subsetting
+
+```{r}
+sub2016=contriWA_1216_RD_points[contriWA_1216_RD_points$election_year==2016,]
+```
+
+
+* Splitting
+```{r}
+splitted_2016 <- split(x = sub2016,
+                       f = sub2016$party)
+names(splitted_2016)
+```
+
+* Creating the maps
+
+```{r, warning=FALSE, eval=TRUE, echo=TRUE}
+
+leafDEMO2016=leaflet(splitted_2016$DEMOCRAT) %>%
+    addTiles() %>%
+    addCircleMarkers(clusterOptions = markerClusterOptions())
+
+leafREPU2016=leaflet(splitted_2016$REPUBLICAN) %>%
+    addTiles() %>%
+    addCircleMarkers(clusterOptions = markerClusterOptions())
+
+```
+
+
+## Simulating facets
+
+Above, we just created two maps. Let's see use `leafsync` to "facet" manually:
+
+```{r, eval=TRUE, echo=TRUE, fig.height=8}
+library(leafsync)
+facet2026=sync(leafDEMO2016,leafREPU2016,ncol = 2)
+facet2026
+```
+This "interactive facet" can be improved if we add the home button! 
+
+```{r, eval=TRUE, echo=TRUE, fig.width=12}
+
+
+leafREPU2016<-leafREPU2016%>%
+    # adding the button
+    addEasyButton(
+        easyButton(icon="fa-home", # a symbol
+                   title="Zoom to Level 1",
+                   onClick=JS(textFun)))
+
+
+facet2026=sync(leafDEMO2016,leafREPU2016,ncol = 2)
+facet2026
+```
+
+

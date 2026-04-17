@@ -1,0 +1,61 @@
+
+<br> 
+<center><img src="https://i.imgur.com/AbCCpQO.png" width="700"></center>
+
+
+_____
+
+# Spatial data and Interactive maps (II)
+
+```{r}
+rm(list = ls()) # start fresh
+
+library(sf)
+contriWA_1216_RD_points=st_read("contrib_points.gpkg")
+
+```
+
+
+**Leaflet** is a good option too for spatial points:
+
+```{r, eval=TRUE,warning=FALSE, echo=TRUE}
+library(leaflet)
+leaflet(contriWA_1216_RD_points) %>%
+    addTiles() %>%
+    addCircleMarkers(clusterOptions = markerClusterOptions())
+```
+
+The previous map aggregated all the data. Let me split by party for 2016:
+
+```{r, warning=FALSE, eval=TRUE, echo=TRUE}
+# subsetting
+sub2016=contriWA_1216_RD_points[contriWA_1216_RD_points$election_year==2016,]
+
+leafDEMO2016=leaflet(sub2016[sub2016$party=='DEMOCRAT',]) %>%
+    addTiles() %>%
+    addCircleMarkers(clusterOptions = markerClusterOptions())
+```
+
+```{r, eval=TRUE, echo=TRUE,warning=FALSE}
+# for rezoom
+textFun="function(btn, map){map.setView([47.751076, -120.740135], 7)}"
+
+
+leafREPU2016=leaflet(sub2016[sub2016$party=='REPUBLICAN',]) %>%
+    addTiles() %>%
+    addCircleMarkers(clusterOptions = markerClusterOptions())%>%
+    # adding the button
+    addEasyButton(
+        easyButton(icon="fa-home", # a symbol
+                   title="Zoom to Level 1",
+                   onClick=JS(textFun)))
+
+```
+
+Now we create our interactive 'facets':
+
+```{r, eval=TRUE, echo=TRUE}
+library(leafsync)
+final2=sync(leafDEMO2016,leafREPU2016,ncol = 2)
+final2
+```

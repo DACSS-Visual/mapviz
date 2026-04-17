@@ -1,0 +1,1038 @@
+
+<br> 
+<center><img src="https://i.imgur.com/AbCCpQO.png" width="700"></center>
+
+
+_____
+
+<a id='TOC'></a>
+
+# Spatial data 
+
+_____
+
+1. [Simple Map](#part1)
+
+2. [Choropleths](#part2)
+
+3. [Merging](#part3) 
+
+4. [Creating spatial points](#part4) 
+
+
+
+
+_____
+
+```{r klippy, echo=FALSE, include=TRUE}
+klippy::klippy(position = c('top', 'right'))
+```
+
+
+<a id='part1'></a>
+
+# Simple map
+
+A map in our course can be a set of polygons, lines, or points. In general, each one represents a **layer** of spatial information, and several layers together make a complex map. Let's start by loading a map of polygons, where each polygon represents a zip code area:
+
+
+```{r, eval=TRUE, warning=FALSE, message=FALSE}
+rm(list = ls()) # start fresh
+
+library(sf) 
+link="https://github.com/DACSS-Visual/SpatialData/raw/main/maps/wazipMap.gpkg"
+zipMap=read_sf(link, layer='zips')
+
+# preview the first rows
+head(zipMap)
+```
+
+## File types
+
+As you can see in the link above, the map is stored in a file called **wazipMap.gpkg**. The extension *.gpkg* is a common format for spatial data. Other well-known formats are **.shp** for *shapefiles* and **.geojson** (or simply **.json**) for *GeoJSON* files.
+
+You can use a URL to read *.gpkg* or *.geojson* files directly into R, but this may not work for *.shp* files. This is because a shapefile is actually a **collection of files** rather than a single file, making it less convenient to read from a URL. If you need to share or access a shapefile remotely, it is best to convert it to *.gpkg* or *.geojson* first.
+
+All of these formats are read using the same function: **`read_sf()`**. Note that the `layer` argument is needed when reading a *.gpkg* file (which can store multiple layers), but it is not required for *.geojson* or *.shp* files.
+
+The object **zipMap** contains the following variables:
+```{r}
+names(zipMap)
+```
+
+Every spatial file must have at least two columns: one serving as an identifier (an "id"), and the mandatory **`geom`** column, which holds the geometry information (polygon, line, or point) that R uses for plotting. This file includes additional columns: the zip code of each area (*ZCTA5CE10*), and population figures for the years 2005 and 2015.
+
+We can visualize the polygons using *ggplot2*:
+
+```{r, warning=FALSE}
+
+library(ggplot2)
+
+base=ggplot(data = zipMap) # define the map
+base + geom_sf(fill = 'grey80',# plot the geometry
+               color = 'black',
+               linewidth = 0.2)   
+
+```
+
+## Map projection
+
+Since a map is a two-dimensional representation of a three-dimensional object, every map uses a **projection** — a mathematical method for translating the curved surface of the Earth onto a flat plane. The projection used depends on the geographic location of the map. The current projection for our WA state map is:
+
+
+
+```{r}
+st_crs(zipMap)$epsg
+```
+
+When the EPSG code is **4326**, the map uses geographic coordinates (longitude and latitude in degrees), which is typically the default when downloading maps from the web. This projection is **not suitable for computing distances or areas** in meaningful units (e.g., meters). For that, we need to re-project the map to a suitable coordinate reference system (CRS). You can search the web or ask an AI tool for the right EPSG code for your study area:
+
+
+
+
+```{r}
+# EPSG 26910 - appropriate for Washington State
+zipMap_proj <- st_transform(zipMap, crs = 26910)
+```
+
+The object **zipMap_proj** is actually a new map, but now rightly projected. You can confirm the change:
+```{r}
+st_crs(zipMap_proj)$epsg
+```
+
+_____
+
+
+[Go to table of contents.](#TOC)
+
+________________
+
+
+<a id='part2'></a>
+
+# Choropleths
+
+
+A choropleth is a colored map that represents the spatial distribution of a variable. Colors assign a visual "ranking" to each polygon relative to the others — in other words, **fill color encodes information**.
+
+Coloring polygons is straightforward, but it can also lead to interpretation problems. For example, let's color the polygons using population data from 2005 using the [viridis colors](https://sjmgarnier.github.io/viridis/reference/scale_viridis.html): 
+
+```{r}
+base <- ggplot(data = zipMap)
+
+base + geom_sf(aes(fill = POP2005),   # variable used to color each polygon
+               color = NA) +           # no polygon borders
+  scale_fill_viridis_c(direction = -1) # apply viridis color scale
+```
+
+
+
+
+
+The map above plots raw counts — the values as they are, with no transformation. Plotting raw counts generally produces a **biased visualization**: color intensity ends up visually correlated with polygon area size (larger polygons tend to have larger counts simply because they are bigger). You can read [this article](https://www.esri.com/about/newsroom/arcuser/understanding-statistical-data-for-mapping-purposes/) for further details.
+
+Raw counts are not an intrinsic property of a polygon — if you split a polygon in two, the count changes. Therefore, we should apply a basic transformation before mapping.
+
+---
+
+
+## Densities
+
+
+Using population *density* instead of raw *counts* removes the visual bias caused by polygon size, since density accounts for the area of each polygon. Let's compute the area of each polygon in km²:
+
+
+
+```{r, message=FALSE}
+library(units)
+
+# We use 'zipMap_proj' (projected CRS) to compute area in meters, then convert to km²
+# st_make_valid(): ensure all polygons have valid geometry before computation
+# st_area():       compute the area of each polygon
+# set_units():     convert to km²
+# drop_units():    keep only the numeric value, dropping the unit label
+
+valid_polygon <-st_make_valid(zipMap_proj)
+area_m2 <-st_area(valid_polygon)
+area_km2 <- set_units(area_m2, "km2")
+
+#new column
+zipMap$area_km2 <-drop_units(area_km2)
+
+# compute population density (people per km²)
+zipMap$POP2005_density <- zipMap$POP2005 / zipMap$area_km2
+```
+
+
+Plotting the density:
+```{r}
+
+base <- ggplot(data = zipMap)   # rebuild base plot to include the new variable
+
+choroPop <- base + geom_sf(aes(fill = POP2005_density), color = NA)
+
+choroPop + scale_fill_viridis_c(direction = -1)
+
+```
+
+
+
+## Ratios Instead of Differences
+
+Let's now represent *change* in population between 2005 and 2015. A first instinct might be to use a **subtraction**:
+
+
+
+```{r}
+# change represented as an absolute difference (subtraction)
+base + geom_sf(aes(fill = POP2015 - POP2005), color = NA) +
+  scale_fill_viridis_c(direction = -1, option = "B")   # "B" = "inferno" palette
+
+```
+
+However, absolute differences are still affected by the original size of the counts — a gain of 500 people means something very different in a zip code of 1,000 vs. one of 100,000. A **ratio**  is a better choice because it expresses change *relative* to the starting value:
+
+
+```{r}
+
+# change represented as a ratio
+
+base + geom_sf(aes(fill = POP2015 / POP2005), color = NA) +
+  scale_fill_viridis_c(direction = -1, option = "B") 
+
+```
+Given the value "1" represents NO change, we could try a diverging scale:
+```{r}
+base + 
+  geom_sf(aes(fill = POP2015 / POP2005), color = NA) +
+  scale_fill_gradient2(
+    low = "black",      # Color for values < 1 (Population decrease)
+    mid = "white",        # Color for values = 1 (No change)
+    high = "#d7191c",     # Color for values > 1 (Population increase)
+    midpoint = 1,         # Your specific center point
+    name = "Growth Ratio"
+  )
+
+## you may try:
+  # scale_fill_distiller(
+  #   palette = "RdBu",     # Red-Blue diverging palette
+  #   limit = c(0.5, 1.5),  # Centering the limits helps keep 1 at the center
+  #   direction = 1
+  # )
+```
+
+
+
+
+_____
+
+
+[Go to table of contents.](#TOC)
+
+________________
+
+
+<a id='part3'></a>
+
+
+# Merging data into a map
+
+
+## The data
+
+
+Maps rarely come with rich or interesting data on their own. Most of the time, we need to bring in an external dataset and merge it into the map.
+
+
+Let's work with data on contributions to candidates and political committees in Washington State. The WA [OpenData portal](https://data.wa.gov/) provides  this dataset on this [page](https://data.wa.gov/Politics/Contributions-to-Candidates-and-Political-Committe/kv7h-kjye).
+
+
+```{r, eval=TRUE}
+linkData='https://github.com/DACSS-Visual/SpatialData/raw/main/data/contriWA.RData'
+load(url(linkData))
+
+# NOTE: this is a regular data frame, NOT a map
+head(contriWA)
+```
+
+
+Let's check the data types:
+
+```{r, eval=TRUE}
+str(contriWA,width = 60, strict.width = 'cut')
+```
+
+A few things to address before we can work with this data:
+
+**1. Zip codes are stored as numeric.** We need them as character strings to match the zip code IDs in the map:
+
+
+```{r}
+contriWA$contributor_zip=as.character(contriWA$contributor_zip)
+```
+
+
+**2. The data is in long format by election year.** Let's check which years and parties are available:
+
+```{r}
+table(contriWA$election_year,contriWA$party)
+```
+
+Let's keep the Democrats and Republicans for 2012 and 2016:
+
+```{r}
+contriWA_1216_RD=contriWA[contriWA$election_year%in% c(2012,2016) & 
+                          contriWA$party%in% c('DEMOCRAT','REPUBLICAN'),]
+```
+
+**3. Unused factor levels remain after subsetting.** Let's verify this and then drop them:
+
+```{r}
+# unused levels are still present after subsetting
+table(contriWA_1216_RD$election_year,contriWA_1216_RD$party)
+```
+
+Here we  drop those unused levels:
+```{r}
+# this is a very important piece of code!!
+contriWA_1216_RD$party=droplevels(contriWA_1216_RD$party)
+```
+
+## Aggregating Before Merging
+
+To merge this data into a map of zip codes, each row in our dataset must represent **one zip code** — not one individual contribution. We therefore need to **aggregate** the data by zip code, election year, and party:
+
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+
+agg_data=aggregate(amount ~ contributor_zip + election_year + party, 
+                      data = contriWA_1216_RD, 
+                      FUN = function(x) c(contributors = length(x), contributions = sum(x)))
+contribsWA_agg=do.call(data.frame, agg_data)
+names(contribsWA_agg)[c(4,5)]=c('count_contributors','sum_contributions')
+## using library(dplyr):
+
+library(dplyr) # not really using it now.
+# contribsWA_agg <- contriWA_1216_RD %>%
+#   group_by(contributor_zip, election_year, party) %>%
+#   summarise(
+#     count_contributors  = length(amount),
+#     sum_contributions = mean(amount),
+#     .groups      = "drop"
+#   )
+
+
+# then
+head(contribsWA_agg)
+```
+
+
+Now let's use `sum_contributions` to compute the **share_contributions**  going to each party per zip code and year:
+
+
+```{r}
+contribsWA_agg <- contribsWA_agg %>%
+  group_by(contributor_zip, election_year) %>%
+  mutate(share_contributions = sum_contributions / sum(sum_contributions) * 100) %>%
+  ungroup()
+
+contribsWA_agg
+
+```
+
+## Checking Coverage Before Merging
+
+Some zip codes in the contributions data may not exist in the map, and viceversa. Let's quantify this mismatch:
+
+
+```{r}
+# not in zipMap 
+length(setdiff(contribsWA_agg$contributor_zip,zipMap$ZCTA5CE10))
+```
+```{r}
+# not in contribsWA_agg_W 
+length(setdiff(zipMap$ZCTA5CE10,contribsWA_agg$contributor_zip))
+```
+Only ZIP codes present in both datasets will be retained after merging; note that several locations are lost in this process.
+
+
+---
+
+## The Merge
+
+
+```{r, eval=TRUE}
+
+# Always put the MAP on the left side of the merge.
+# This ensures the result remains a spatial (sf) object.
+# Reversing the order — merge(contribsWA_agg, zipMap, ...) — would lose the geometry.
+
+contrib_zipMap <- merge(zipMap, contribsWA_agg,
+                        by.x = 'ZCTA5CE10',
+                        by.y = 'contributor_zip')
+
+# now you have
+head(contrib_zipMap)
+```
+
+
+The result, **`contrib_zipMap`**, is a new spatial object that combines the zip code geometries with the aggregated contribution data, ready for choropleth mapping.
+
+
+Let's explore the contributions percapita:
+
+```{r, eval=TRUE}
+
+base <- ggplot() + theme_void()
+
+base + geom_sf(data = contrib_zipMap,
+               aes(fill = sum_contributions)) +
+  scale_fill_viridis_c(direction = -1) +       
+  facet_grid(party ~ election_year) +
+  labs(fill = 'sum of contributions per capita')
+
+
+```
+
+Again, remember the _sum_ is not a good choice for mapping, then try the percent (share) of contributions:
+
+```{r}
+base + geom_sf(data = contrib_zipMap,
+               aes(fill = share_contributions)) +
+  scale_fill_viridis_c(direction = -1) +       
+  facet_grid(party ~ election_year) +
+  labs(fill = 'share of contributions')
+```
+
+
+Notice the map gives no visual reference for areas that were lost during the merge. A better approach is to add a **background layer** showing the full state boundary, so that unmatched zip codes appear as _grey_ gaps:
+
+
+```{r, message=FALSE}
+
+# load a simple WA state boundary as a background layer
+wa_simple <- read_sf('https://github.com/DACSS-Visual/SpatialData/raw/refs/heads/main/maps/WA_State_Boundary.geojson')
+
+# use wa_simple as the base layer (white fill = no data)
+base <- ggplot(wa_simple) +
+  geom_sf(fill = 'grey') +
+  theme_void()
+
+sharePlot=base +  geom_sf(data = contrib_zipMap,
+                  aes(fill = share_contributions)) +
+                  scale_fill_viridis_c(direction = -1) +       
+                  facet_grid(party ~ election_year) +
+                  labs(fill = 'share of contributions\n(grey: no information)')
+
+#here
+sharePlot
+```
+
+Here is some legend customization:
+
+
+```{r, eval=TRUE}
+
+sharePlot + 
+      theme(legend.title    = element_text(size = 8, hjust = 0.5),
+            legend.position = "bottom",
+            legend.key.width = unit(1, "cm")) +
+        guides(fill = guide_colourbar(title.position = "top"))
+```
+
+With a continuous color scale it is still difficult to draw clear conclusions from the map. **Discretizing** the variable into categories can make patterns easier to read and communicate.
+
+
+# Discretizing
+
+Let's organize `share_contributions` into  quartiles. We follow these steps:
+
+
+1. Explore the variable to find cutpoints. 
+
+We use `fivenum` (minimum, lower hinge, median, upper hinge, maximum) to summarize the distribution by group:
+
+
+```{r}
+do.call(data.frame,
+        aggregate(data=contrib_zipMap,
+                  share_contributions~election_year +party,
+                  fivenum))
+```
+
+The same information can be seen in the boxplot:
+
+```{r}
+ggplot(contrib_zipMap) +
+  aes(x = share_contributions) +
+  geom_boxplot() +
+  facet_grid(election_year + party ~.) 
+```
+
+
+
+2. Cut the variable:
+
+Based on that information, let me customize the cuts:
+```{r}
+# vector of data breaks
+qCuts=quantile(contrib_zipMap$share_contributions, probs = seq(0, 1, 0.25))
+```
+
+Now create the discrete version:
+```{r}
+customLabels <- c("Q1: Low", "Q2: Mid-Low", "Q3: Mid-High", "Q4: High")
+
+contrib_zipMap$share_contributions_cat<-cut(contrib_zipMap$share_contributions, 
+                                      breaks = qCuts, 
+                                      labels = customLabels,include.lowest = TRUE)
+#
+#
+# see the distribution
+table(contrib_zipMap$share_contributions_cat,
+      contrib_zipMap$election_year,
+      contrib_zipMap$party)
+```
+
+
+3. Plot with a sequential palette
+
+Choose a sequential palette from [here](https://ggplot2.tidyverse.org/reference/scale_brewer.html):
+
+
+```{r}
+
+base + geom_sf(data = contrib_zipMap,
+               aes(fill = share_contributions_cat),
+               color = NA) +
+  scale_fill_brewer(palette = "YlOrRd") +
+  facet_grid(party ~ election_year) +
+  labs(fill     = "Quartiles\n(grey: no information)",
+       title    = "Share of Political Contributions by zip codes",
+       subtitle = "WA State Contributions to Republicans and Democrats in 2012 & 2016") 
+
+```
+
+As this section shows, making a map is technically straightforward — but finding a clear, honest story to tell with it takes time and iteration.
+
+
+
+
+
+
+[Go to table of contents.](#TOC)
+
+________________
+
+
+<a id='part4'></a>
+
+# Plotting coordinates
+
+The dataframe `contriWA_1216_RD` contains columns with geographic coordinates (longitude and latitude). We first convert it into a spatial object so it can be used with `sf`-based maps.
+
+```{r, eval=TRUE, warning=FALSE, message=FALSE}
+mapCRS <- st_crs(zipMap)   # extract the CRS from our zip code map, use it below
+
+contriWA_1216_RD_points <- st_as_sf(contriWA_1216_RD,         # source data frame
+                                     coords = c("Lon", "Lat"), # columns with coordinates
+                                     remove = FALSE,  # keep the original Lon/Lat columns
+                                     crs    = mapCRS)          # assign the same CRS as the map
+```
+
+The new spatial object has the same columns as before plus a `geometry` column:
+
+```{r, eval=TRUE}
+names(contriWA_1216_RD_points)
+```
+
+Unlike a regular dataframe, this spatial object is now an `sf` (simple features) object:
+
+```{r, eval=TRUE}
+class(contriWA_1216_RD_points)
+```
+
+We can confirm its geographic properties with:
+
+```{r, eval=TRUE, warning=FALSE}
+st_crs(contriWA_1216_RD_points)
+```
+
+## Simplest way with _geom_sf()_
+
+Let's plot the points on top of the WA state zip code map using its map nature:
+
+```{r}
+# borders
+base <- ggplot(wa_simple) + geom_sf(fill = 'white') +
+        theme_void()
+
+contributors <- base +
+                geom_sf(data  = contriWA_1216_RD_points) +
+                facet_grid(party ~ election_year) + 
+                labs(title ="Location of contributors")
+
+# see
+contributors
+```
+
+This map is informative, but limited.
+
+When many observations occupy similar locations, points overlap. This problem is known as **overplotting**.
+
+We can partially reduce it using transparency:
+
+```{r}
+base +
+  geom_sf(data  = contriWA_1216_RD_points, 
+          alpha=0.1) +  # THE ALPHA
+  facet_grid(party ~ election_year) 
+
+```
+
+Transparency helps, but not enough. We still cannot clearly identify:
+
+- whether there is one dominant cluster or several
+- how intense clusters are
+- whether groups differ spatially
+- whether hidden secondary clusters exist
+
+To solve this, we use **Kernel Density Estimation (KDE)**. 
+
+## The KDE approach
+
+A kernel density estimate transforms raw points into a smooth surface representing local concentration.
+
+Instead of asking:
+
+> Where are the points?
+
+we ask:
+
+> Where are points concentrated?
+
+We use `stat_density_2d()`.
+
+
+Important: KDE here uses the original coordinate columns (`Lon`, `Lat`), not the `sf` geometry column.
+
+Also note:
+
+> These maps estimate concentration of observations (contributors), not contribution amounts.
+
+---
+
+## A Core Visualization Principle
+
+When visualizing point concentration, there is always a tradeoff:
+
+> Raw scales preserve magnitude but may hide weaker structure.  
+> Transformed scales reveal weaker structure but alter intuitive magnitude interpretation.
+
+No single map is “the truth.” Different maps answer different questions.
+
+---
+
+### KDE Strategy 1: Raw `level` (Linear Scale)
+
+
+
+```{r,eval=FALSE}
+stat_density_2d(aes(...,
+                    fill = after_stat(level)),
+                geom  = "polygon")
+```
+
+
+
+This strategy maps color directly to the kernel density estimate. Areas with twice the point density get twice the color intensity (on a continuous scale).
+
+```{r}
+base +
+  stat_density_2d(
+    data  = contriWA_1216_RD_points,
+    aes(x = Lon, y = Lat,
+        fill  = after_stat(level)),
+    geom  = "polygon"
+  ) +
+  facet_grid(party ~ election_year) + labs(title = "kde 1")
+```
+
+
+> **Interpretation**
+
+> * Color maps directly to estimated density.
+> * Higher density = stronger fill.
+
+> **Strength**
+
+> * This is the most statistically direct representation.
+
+> **Weakness**
+
+> * Extremely dense regions dominate the scale. Seattle may overshadow weaker clusters.
+
+**Use Raw Density When**
+
+- absolute dominance matters
+- comparing peak intensity matters
+- data are not extremely skewed
+
+
+---
+
+### KDE Strategy 2: Log Density (`log10(level)`)
+
+
+
+```{r,eval=FALSE}
+stat_density_2d(aes(...,
+                    fill = after_stat(log10(level))),
+                geom  = "polygon")
+```
+
+
+This strategy applies a **base-10 logarithm** to density values before mapping to color. 
+
+
+```{r}
+base +
+  stat_density_2d(data  = contriWA_1216_RD_points,
+                  aes(x = Lon, y = Lat,
+                      fill  = after_stat(log10(level))),
+                  geom  = "polygon") +
+      facet_grid(party ~ election_year) + labs(title='log KDE')
+```
+
+> **Interpretation**
+
+
+> * The logarithm compresses the range of densities.
+
+> * A 10× increase becomes one equal visual step.
+
+> **Strength**
+
+> * Hidden clusters become visible. Secondary cities and suburban concentrations emerge more clearly.
+
+> **Weakness**
+
+> * Interpretation is less intuitive. Color reflects relative ratios rather than raw magnitude.
+
+**Use Log Density When**
+
+- data span orders of magnitude
+- one hotspot dominates
+- comparing unequal groups
+- exploratory analysis
+
+---
+
+## KDE Strategy 3: Binned Density (`as.ordered(level)`)
+
+
+```{r,eval=FALSE}
+stat_density_2d(aes(...,
+                    fill = after_stat(as.ordered(level)), 
+                    bins = 5,
+                geom  = "polygon")
+```
+
+In this strategy we convert continuous density into **ordered categories** (factors), forcing, in this case, exactly 5 distinct color bands regardless of the underlying distribution shape.
+
+
+
+```{r}
+base +
+  stat_density_2d(
+    data = contriWA_1216_RD_points,
+    aes(x = Lon, y = Lat, fill = after_stat(as.ordered(level))), # Binned
+    geom = "polygon",
+    bins = 5 # Force 5 distinct levels of "heat"
+  ) +
+  facet_grid(party ~ election_year)
+```
+
+> **Interpretation**
+
+> * Continuous density is converted into ordered categories such as low, medium, and high.
+
+> **Strength**
+
+> * Easy to read and useful for presentations.
+
+> **Weakness**
+
+> * Boundaries are arbitrary. Fine differences disappear.
+
+**Use Binned Density When**
+
+- clarity matters most
+- communicating to decision-makers
+- building dashboards or slides
+- fixed categories are useful
+
+
+>Some things to try!
+
+Try adding a viridis palette?
+
+```{r, eval=FALSE}
+  scale_fill_viridis_c(option    = "B",
+                       direction = -1,
+                       name      = "Density")
+```
+
+
+Modify `h` for example:
+```{r, eval=FALSE}
+stat_density_2d(..., 
+                h=c(0.8,0.8))
+```
+
+
+
+## KDE Strategy 4: Normalized Density (`ndensity`)
+
+Here we will use `after_stat(ndensity)` in fill, and use `raster` instead of `polygon.
+```{r}
+# By **normalizing the density within each panel** (scaling independently from 0 to 1), 
+# we allow weaker secondary patterns to emerge that were previously drowned out:
+
+base +
+  stat_density_2d(
+    data     = contriWA_1216_RD_points,
+    aes(x    = Lon, y = Lat,
+        fill = after_stat(ndensity)),
+    geom     = "raster",
+    contour  = FALSE,
+  ) +
+  facet_grid(party ~ election_year) 
+```
+
+> **What is `ndensity`?**
+
+> Within each panel:
+
+> - minimum approximately 0
+> - maximum = 1
+
+> * Each facet receives its own internal scale.
+
+> **Strength**
+
+> * Shows where each group is concentrated relative to itself. Hidden eastern Washington clusters may emerge.
+
+> **Weakness**
+
+> * You cannot compare magnitude across panels.
+
+This answers:
+
+> Where within each group?
+
+Not:
+
+> Which group contributes more?
+
+
+
+NOTICE that the figure above requires some changes, let me guide you step by step to becode efficiently.
+
+1. The basemap is not visible, let's just plot the densities:
+
+```{r}
+newbase = ggplot(contriWA_1216_RD_points) 
+density = newbase + stat_density_2d(aes(x = Lon, y = Lat,
+                                     fill = after_stat(ndensity)),
+                                 geom     = "raster",
+                                 contour  = FALSE) +
+  facet_grid(party ~ election_year) 
+
+```
+
+2. Add better color palette
+```{r}
+density = density + scale_fill_viridis_c(option    = "B",
+                               direction = -1,
+                               name = "Normalized density") 
+density
+```
+
+3. You may add the WA state border now (which used to be `base`):
+```{r}
+density + geom_sf(data = wa_simple, 
+                  fill = NA,
+                  linewidth = 0.4) 
+```
+
+## Bandwidth Matters (`h`)
+
+KDE depends heavily on smoothing bandwidth.
+
+```r
+stat_density_2d(..., h = c(0.8, 0.8))
+```
+
+- smaller `h` = sharper, noisier local clusters
+- larger `h` = smoother, broader regional structure
+
+Bandwidth choice can strongly affect interpretation.
+
+---
+
+## Comparative Summary
+
+| Question | Best Strategy |
+|----------|---------------|
+| Where are most contributors overall? | Raw `level` |
+| Where are hidden secondary clusters? | `log10(level)` |
+| Where is each party concentrated internally? | `ndensity` |
+| Need a simple presentation graphic? | Binned levels |
+
+---
+
+## Technical Comparison
+
+| Criterion | Raw | Log | Binned | Normalized |
+|----------|-----|-----|--------|------------|
+| Preserves magnitude | Yes | No | Partial | No |
+| Reveals weak clusters | Low | High | Medium | Very High |
+| Easy to explain | High | Medium | High | Medium |
+| Cross-panel comparison | High | Medium | Medium | Low |
+| Exploratory use | Good | Excellent | Fair | Excellent |
+
+---
+
+## Important Spatial Note
+
+Kernel density on longitude/latitude uses degrees rather than true planar distance.
+
+For serious spatial analysis, project coordinates first into an appropriate projected CRS.
+
+For teaching purposes, this example remains useful.
+
+---
+
+## Final Synthesis
+
+Each visualization reveals something and hides something else.
+
+- Point maps show raw observations but suffer from overplotting.
+- Raw KDE preserves magnitude but hides weaker structure.
+- Log KDE reveals hidden clusters.
+- Binned KDE simplifies communication.
+- Normalized KDE reveals internal geography but sacrifices cross-group comparison.
+
+Used together, these maps suggest a clear substantive pattern:
+
+> Political contributions in Washington are strongly western and metropolitan for both parties, but Republicans retain meaningful secondary concentration in eastern Washington.
+
+That conclusion becomes visible only by comparing multiple visualization strategies.
+
+_____
+
+# Interactive Maps
+
+## Preparing Data for Web Mapping
+
+Interactive maps created with libraries such as _leaflet_, _tmap_, or _mapview_ usually require lighter spatial data than static maps. Raw spatial objects are often too large because they contain unnecessary columns and a very high number of points defining each polygon.
+
+For instance, in the next notebook we will use _contrib_zipMap_, which is approximately this size:
+
+```{r}
+format(object.size(contrib_zipMap), units = "auto")
+```
+
+**The Challenge**:
+
+* The original object may be too heavy for interactive functions, making them slow or unstable.
+* Polygons often contain more points than are needed for web visualization.
+* The object may also include columns that are irrelevant for the map.
+
+**The Solution:** 
+We preprocess the spatial object to reduce its size before using it in interactive maps.
+
+| Step         | Function                        | Purpose                                                 |
+| ------------ | ------------------------------- | ------------------------------------------------------- |
+| 1. Subset    | `contrib_zipMap[, keepSome]`    | Keep only the columns needed for mapping                |
+| 2. Project   | `st_transform(crs = 26910)`     | Convert to a metric CRS so simplification uses meters   |
+| 3. Validate  | `st_make_valid()`               | Prevent problems if any geometries are invalid          |
+| 4. Simplify  | `st_simplify(dTolerance = 500)` | Reduce the number of points used to define each polygon |
+| 5. Reproject | `st_transform(crs = 4326)`      | Return to geographic coordinates for web mapping        |
+
+
+
+> The key function is `st_simplify()`, which removes points from polygon boundaries. This reduces geometric detail, but usually not in a way that is noticeable to the eye at the scale of an interactive web map. The result is a spatial object that is much more manageable in memory and faster to render.
+
+
+```{r}
+# subsetting
+keepSome <- c("ZCTA5CE10", "election_year", "party", "share_contributions_cat")
+
+# 1. subset
+contrib_zipMap_light <- contrib_zipMap[, keepSome]
+
+# 2. project to a metric CRS
+contrib_zipMap_light <- contrib_zipMap_light %>%
+  st_transform(crs = 26910)
+
+# 3. validate geometries
+contrib_zipMap_light <- contrib_zipMap_light %>%
+  st_make_valid()
+
+# 4. simplify geometry
+contrib_zipMap_light <- contrib_zipMap_light %>%
+  st_simplify(dTolerance = 500, preserveTopology = TRUE)
+
+# 5. return to geographic coordinates for web mapping
+contrib_zipMap_light <- contrib_zipMap_light %>%
+  st_transform(crs = 4326)
+
+```
+
+The result will be saved as a *GeoPackage* file. Notice that, if a file with the same name already exists in the working directory, I delete it first; otherwise, the writing process may fail.
+
+```{r}
+outfile1 <- "contrib_polygons_light.gpkg"
+
+if (file.exists(outfile1)) {
+  file.remove(outfile1)
+}
+
+st_write(
+  contrib_zipMap_light,
+  outfile1,
+  quiet = TRUE
+)
+```
+
+
+**Also saving point data prevously created:**
+
+
+```{r}
+outfile2 <- "contrib_points.gpkg"
+
+if (file.exists(outfile2)) {
+  file.remove(outfile2)
+}
+st_write(contriWA_1216_RD_points,
+  outfile2,
+  quiet = TRUE
+)
+```
+
+
+The interactive maps are here:
+
+[map1](https://github.com/DACSS-Visual/SpatialData/blob/main/interactive.html)
+[map2](https://github.com/DACSS-Visual/SpatialData/raw/main/interactive.html)
+[map3](interactive.html)
+
+[Go to table of contents.](#TOC)
+
+
+
+
