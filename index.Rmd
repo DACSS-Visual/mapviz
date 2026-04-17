@@ -40,7 +40,7 @@ A map in our course can be a set of polygons, lines, or points. In general, each
 rm(list = ls()) # start fresh
 
 library(sf) 
-link="https://github.com/DACSS-Visual/SpatialData/raw/main/maps/wazipMap.gpkg"
+link="https://github.com/DACSS-Visual/mapviz/raw/main/maps/wazipMap.gpkg"
 zipMap=read_sf(link, layer='zips')
 
 # preview the first rows
@@ -248,7 +248,7 @@ Let's work with data on contributions to candidates and political committees in 
 
 
 ```{r, eval=TRUE}
-linkData='https://github.com/DACSS-Visual/SpatialData/raw/main/data/contriWA.RData'
+linkData='https://github.com/DACSS-Visual/mapviz/raw/main/data/contriWA.RData'
 load(url(linkData))
 
 # NOTE: this is a regular data frame, NOT a map
@@ -412,7 +412,7 @@ Notice the map gives no visual reference for areas that were lost during the mer
 ```{r, message=FALSE}
 
 # load a simple WA state boundary as a background layer
-wa_simple <- read_sf('https://github.com/DACSS-Visual/SpatialData/raw/refs/heads/main/maps/WA_State_Boundary.geojson')
+wa_simple <- read_sf('https://github.com/DACSS-Visual/mapviz/raw/refs/heads/main/maps/WA_State_Boundary.geojson')
 
 # use wa_simple as the base layer (white fill = no data)
 base <- ggplot(wa_simple) +
@@ -1027,8 +1027,8 @@ st_write(contriWA_1216_RD_points,
 
 The interactive maps are here:
 
-[map1](https://github.com/DACSS-Visual/SpatialData/blob/main/interactive.html)
-[map2](https://github.com/DACSS-Visual/SpatialData/raw/main/interactive.html)
+[map1](https://github.com/DACSS-Visual/mapviz/blob/main/interactive.html)
+[map2](https://github.com/DACSS-Visual/mapviz/raw/main/interactive.html)
 [map3](interactive.html)
 
 [Go to table of contents.](#TOC)

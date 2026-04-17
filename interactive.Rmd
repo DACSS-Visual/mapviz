@@ -12,8 +12,8 @@ _____
 rm(list = ls()) # start fresh
 
 library(sf)
-contrib_zipMap=st_read("https://github.com/DACSS-Visual/SpatialData/raw/main/contrib_polygons_light.gpkg")
-wa_simple <- read_sf('https://github.com/DACSS-Visual/SpatialData/raw/main/maps/WA_State_Boundary.geojson')
+contrib_zipMap=st_read("https://github.com/DACSS-Visual/mapviz/raw/main/contrib_polygons_light.gpkg")
+wa_simple <- read_sf('https://github.com/DACSS-Visual/mapviz/raw/main/maps/WA_State_Boundary.geojson')
 ```
 
 ```{r}
@@ -29,7 +29,7 @@ Leaflet works like this:
 library(leaflet)
 
 leafletObject<- leaflet() %>% # create the leaflet object
-                  addTiles() # add the background
+                  addProviderTiles("CartoDB.Positron") # add the background
 leafletObject
 ```
 
@@ -272,14 +272,14 @@ This strategy will plot every point, but since they are more than 300 000, that 
 ```{r, eval=FALSE,warning=FALSE, echo=TRUE}
 
 leaflet(contriWA_1216_RD_points) %>%
-    addTiles() %>%
+    addProviderTiles("CartoDB.Positron") %>%
     addCircleMarkers(stroke = F, radius = 0.5)
 ```
 
 Leaflet offers this smart alternative:
 ```{r}
 leaflet(contriWA_1216_RD_points) %>%
-    addTiles() %>%
+    addProviderTiles("CartoDB.Positron") %>%
     addCircleMarkers(stroke = F, 
                      clusterOptions = markerClusterOptions())
 
@@ -306,11 +306,11 @@ names(splitted_2016)
 ```{r, warning=FALSE, eval=TRUE, echo=TRUE}
 
 leafDEMO2016=leaflet(splitted_2016$DEMOCRAT) %>%
-    addTiles() %>%
+    addProviderTiles("CartoDB.Positron") %>%
     addCircleMarkers(clusterOptions = markerClusterOptions())
 
 leafREPU2016=leaflet(splitted_2016$REPUBLICAN) %>%
-    addTiles() %>%
+    addProviderTiles("CartoDB.Positron") %>%
     addCircleMarkers(clusterOptions = markerClusterOptions())
 
 ```
