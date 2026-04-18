@@ -322,18 +322,23 @@ Here, `JS()` lets us pass a small JavaScript function to Leaflet.
 **Key idea**: A home button is a simple but very useful addition in exploratory interactive maps.
 
 
-# Interactive maps of spatial points
+# Interactive Maps of Spatial Points
+
+So far we worked with polygons. Now let us move to **point data**.
 
 ```{r}
 library(sf)
-contriWA_1216_RD_points=st_read("contrib_points.gpkg")
+contriWA_1216_RD_points<-st_read("contrib_points.gpkg")
 
 ```
 
 
-**Leaflet** is a good option too for spatial points. But not all strategies are good. 
+**Leaflet** maps points, but not all strategies work equally well.
 
-This strategy will plot every point, but since they are more than 300 000, that might not be a good idea (I will not run this code, but you can try it) : 
+
+## Plotting Every Point
+
+This strategy plots every point directly:
 
 ```{r, eval=FALSE,warning=FALSE, echo=TRUE}
 
@@ -342,7 +347,19 @@ leaflet(contriWA_1216_RD_points) %>%
     addCircleMarkers(stroke = F, radius = 0.5)
 ```
 
-Leaflet offers this smart alternative:
+We did not run that code above because there are more than 300,000 points.
+
+Plotting that many points interactively can be:
+
+- slow
+- visually cluttered
+- difficult to interpret
+
+
+## A Better Strategy: Marker Clustering
+
+Leaflet offers a better first step for large point datasets:
+
 ```{r}
 leaflet(contriWA_1216_RD_points) %>%
     addProviderTiles("CartoDB.Positron") %>%
@@ -351,7 +368,17 @@ leaflet(contriWA_1216_RD_points) %>%
 
 ```
 
-The previous map aggregated all the data and show you the counts by closeness, which changes dynamically as you zoom in or out. Let me split by party for 2016:
+
+This groups nearby points into clusters that expand as the user zooms in.
+
+> **A very important note:** Marker clustering is useful for exploration, but it is not the same as statistical density estimation.
+Clusters depend on zoom level and browser behavior, not on kernel smoothing.
+
+**Key idea**: For very large point datasets, clustering is often better than plotting every point directly.
+
+### Splitting Point Data by Party
+
+Now let us focus on 2016 only
 
 * Subsetting
 
@@ -367,7 +394,9 @@ splitted_2016 <- split(x = sub2016,
 names(splitted_2016)
 ```
 
-* Creating the maps
+### Creating Two Interactive Point Maps
+
+Now we create one map for Democrats and one for Republicans:
 
 ```{r, warning=FALSE, eval=TRUE, echo=TRUE}
 
@@ -382,16 +411,24 @@ leafREPU2016=leaflet(splitted_2016$REPUBLICAN) %>%
 ```
 
 
-## Simulating facets
+### Simulating Facets with leafsync
 
-Above, we just created two maps. Let's see use `leafsync` to "facet" manually:
+Static maps can be faceted with ggplot2, but leaflet does not have a built-in faceting system.
+
+A useful workaround is the `leafsync` package, which lets us display synchronized maps side by side.
 
 ```{r, eval=TRUE, echo=TRUE, fig.height=8}
 library(leafsync)
-facet2026=sync(leafDEMO2016,leafREPU2016,ncol = 2)
+facet2026<-sync(leafDEMO2016,leafREPU2016,ncol = 2)
 facet2026
 ```
-This "interactive facet" can be improved if we add the home button! 
+This creates an “interactive facet” with two maps side by side.
+
+**Key idea**: Synchronized maps are a practical way to simulate faceting in interactive mapping.
+
+### Improving the Interactive Facet
+
+Let us add the home button to one of the maps:
 
 ```{r, eval=TRUE, echo=TRUE, fig.width=12}
 
@@ -407,5 +444,18 @@ leafREPU2016<-leafREPU2016%>%
 facet2026=sync(leafDEMO2016,leafREPU2016,ncol = 2)
 facet2026
 ```
+You could also add the same button to both maps if you want complete symmetry.
+
+## Final Reflection
+
+Interactive maps are powerful because they allow readers to, zoom in, pan around, switch layers on and off, inspect specific regions in detail.
+
+But they also have limits. Compared to static maps, interactive maps are often:
+
+- better for exploration
+- worse for print
+- less precise for side-by-side comparison
+
+That is why static and interactive maps should be seen as complementary, not competing, tools.
 
 [Go to MAIN session](https://dacss-visual.github.io/mapviz/)
