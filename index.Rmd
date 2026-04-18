@@ -1025,11 +1025,9 @@ st_write(contriWA_1216_RD_points,
 ```
 
 
-The interactive maps are here:
+The interactive session can be found here:
 
-[map1](https://github.com/DACSS-Visual/mapviz/blob/main/interactive.html)
-[map2](https://github.com/DACSS-Visual/mapviz/raw/main/interactive.html)
-[map3](interactive.html)
+[Go to Session in interactive Maps](interactive.html)
 
 [Go to table of contents.](#TOC)
 

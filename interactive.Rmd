@@ -16,15 +16,24 @@ contrib_zipMap=st_read("https://github.com/DACSS-Visual/mapviz/raw/main/contrib_
 wa_simple <- read_sf('https://github.com/DACSS-Visual/mapviz/raw/main/maps/WA_State_Boundary.geojson')
 ```
 
+Before building maps, it is always useful to inspect the variables we have available:
+
 ```{r}
 names(contrib_zipMap)
 ```
 
-Interactive maps are useful when readers need to zoom in and explore the map directly in the browser. Here we use the `leaflet` package.
 
-# A simple interactive map
+Interactive maps are useful when readers need to zoom in, move around, and explore the map directly in the browser. In this session we use the `leaflet` package, which is one of the most common tools for interactive maps in R.
 
-Leaflet works like this:
+A useful way to think about `leaflet` is this:
+
+> We create a map object first, and then keep adding layers to it.
+
+
+# Building a Simple Interactive Map
+
+We begin with the smallest possible leaflet map:
+
 ```{r}
 library(leaflet)
 
@@ -33,8 +42,10 @@ leafletObject<- leaflet() %>% # create the leaflet object
 leafletObject
 ```
 
+This creates a blank interactive map with a background tile layer.
 
-Given we have the `wa_simple` object, we simply **add** its polygons:
+Since we already have the `wa_simple` object, we can now add the Washington State polygon directly:
+
 
 ```{r}
 leafletObject%>%
@@ -42,7 +53,9 @@ leafletObject%>%
     data = wa_simple)
 ```
 
-Let's add some details to create our `baseMap`:
+
+That works, but the state outline still looks rough. Let us improve it step by step and create a reusable `baseMap`:
+
 ```{r}
 baseMap<-leafletObject%>%
   addPolygons(
@@ -54,7 +67,7 @@ baseMap<-leafletObject%>%
 baseMap
 
 ```
-
+This `baseMap` will serve as the background for the maps we build next.
 
 
 # A simple choropleth
@@ -70,7 +83,9 @@ map_Rep2012 <- contrib_zipMap[
   contrib_zipMap$party == "REPUBLICAN", ]
 ```
 
-### 2. Create a color palette for **share_contributions_cat** using `colorFactor()`:
+### 2. Create a color palette
+
+Because `share_contributions_cat` is a categorical variable, we use `colorFactor()`.
 
 ```{r, message=FALSE}
 
@@ -80,7 +95,12 @@ paletteFun <- colorFactor(
               )
 ```
 
-### 3. Commonly, we create labels for hover text
+Using the full dataset in `domain` helps keep colors consistent across maps.
+
+
+### 3. Create hover labels
+
+These labels will appear when the cursor moves over a polygon.
 
 ```{r}
 popUp_labels <- sprintf(
@@ -113,32 +133,39 @@ Rep2012 <- baseMap %>%
 Rep2012
 ```
 
+Now we can already see the choropleth structure.
+
 ### 6. Final Touches
 
-* **Retouching the polygons:**
+Now we improve appearance and interactivity:
+
+#### a. **Retouching the polygons:**
 
 ```{r}
-Rep2012 <- baseMap %>%
+rep2012_map <- baseMap %>%
   addPolygons(
     data = map_Rep2012,
     fillColor = ~paletteFun(share_contributions_cat),
-    stroke = FALSE,# no border
-    fillOpacity = 0.8, # improve light
-    label = popUp_labels, #text when hovering
-    ## optional
-    labelOptions = labelOptions(
-      textsize = "15px") # change size of text
+    stroke = FALSE,       # remove polygon borders
+    fillOpacity = 0.8,    # slightly transparent fill
+    label = popUp_labels, # hover text
+    labelOptions = labelOptions(textsize = "15px") # change size of text
   )
 
-Rep2012
+rep2012_map
 
 ```
 
 
-* **Adding a legend**
+**A quick reminder:**
+
+* *color* controls the border
+* *fillColor* controls the inside of polygons
+
+#### b. **Adding a legend**
 
 ```{r}
-Rep2012 %>%
+rep2012_map %>%
   addLegend(
     data = map_Rep2012,
     values = ~share_contributions_cat,
@@ -148,12 +175,21 @@ Rep2012 %>%
   )
 ```
 
+**Key idea** : Interactive choropleth maps are built layer by layer:
 
-# Interacting layers with legend
+* base tiles
+* polygons
+* colors
+* labels
+* legend
 
-Now we create a map where each contribution category is a separate layer. This allows users to turn categories on and off.
+# Turning Categories into Interactive Layers
 
-We use Democratic contributions in 2012. Remember we have these levels:
+Now we create a map where each contribution category is a separate layer. This lets users switch categories on and off.
+
+We use _Democratic contributions in 2012_.
+
+First, let us inspect the category labels:
 
 ```{r}
 theLabelsForLevels <- sort(unique(contrib_zipMap$share_contributions_cat))
@@ -196,64 +232,94 @@ demo_splitted <- split(x = contribWA2012_demo,
 length(demo_splitted)
 ```
 
-Take a look at this *old-fashioned* for loop:
+This is useful because we want to add each category as a separate interactive layer.
+
+## A Quick Look at the Parallel Objects
+
+Here is an old-fashioned for loop that helps us inspect the pieces in parallel:
+
 ```{r}
-
-for (i in 1:length(demo_splitted)) {
-      print(dim(demo_splitted[[i]])) # the dataframe i's dimensions
-      print(PuOr[i]) # the dataframe i's color
-      print(theOpacity[i]) # the dataframe i's opacity
-      print(names(demo_splitted)[i]) # the dataframe i's group or category
-
-  }
+for (i in seq_along(demo_splitted)) {
+  print(dim(demo_splitted[[i]]))   # dimensions of dataframe i
+  print(PuOr[i])                   # color for dataframe i
+  print(theOpacity[i])             # opacity for dataframe i
+  print(names(demo_splitted)[i])   # category name for dataframe i
+}
 ```
 
-As you see, you can visit those important objects in parallel. Let's use that to build the FOUR leaflet maps, and plot one on top of the other:
+**The important lesson is this:**
+
+> We can move through several related objects at the same time by using the same index `i`.Let's use that to build the FOUR leaflet maps, and plot one on top of the other:
 
 ```{r}
-map2012_demo <- baseMap
+demo2012_layered_map <- baseMap
 
-for (i in 1:length(demo_splitted)) {
-      map2012_demo <- map2012_demo %>%
-                        addPolygons(
-                          stroke = FALSE,
-                          data = demo_splitted[[i]],
-                          color = PuOr[i],
-                          fillOpacity = theOpacity[i],
-                          # this is the most important!!
-                          group = names(demo_splitted)[i]
-                        )}
-map2012_demo
+for (i in seq_along(demo_splitted)) {
+  demo2012_layered_map <- demo2012_layered_map %>%
+    addPolygons(
+      data = demo_splitted[[i]],
+      stroke = FALSE,
+      color = PuOr[i],
+      fillOpacity = theOpacity[i],
+      group = names(demo_splitted)[i] #"group" will inform the layer name
+    )
+}
+
+demo2012_layered_map
 ```
+At first glance, the result may not look very different. The crucial step is the `group` argument. That is what allows us to connect each layer to an interactive control.
 
-ABove you see o difference, but here you will the effect of `group = names(demo_splitted)[i]`
+Now we add the layer control:
+
 ```{r}
-map2012_demo <- map2012_demo %>%
-                  addLayersControl(
-                    overlayGroups = theLabelsForLevels,
-                    options = layersControlOptions(collapsed = FALSE))
+demo2012_layered_map <- demo2012_layered_map %>%
+  addLayersControl(
+    overlayGroups = names(demo_splitted),
+    options = layersControlOptions(collapsed = FALSE)
+  )
 
-map2012_demo
+demo2012_layered_map
 ```
+Now users can turn contribution categories on and off.
 
+**Key idea**: To make categories interactive in leaflet, we often:
 
-Notice that if you start zooming in, it might be difficult to go back to a whole view of our main map. Leaflet does not give you a **home** button by default. This code helps you with that:
+- split the data by category
+- add each category as its own group
+- connect those groups to addLayersControl()
+
+## Adding a Home Button
+
+When users zoom deeply into a map, it may be hard to return to the original statewide view.
+
+Leaflet does not include a home button by default, but we can add one.
+
+First, we define a small JavaScript function:
+
 ```{r}
-# prepare the button with the coordinate and zoom level (7)
 textFun <- "function(btn, map){map.setView([47.751076, -120.740135], 7)}"
-
-## adding it
-finalZoom <- map2012_demo %>%
-                addEasyButton(
-                  easyButton(
-                    icon = "fa-home",
-                    title = "Zoom to Washington",
-                    onClick = JS(textFun)
-                  )
-                )
-  
-finalZoom
 ```
+
+This tells the map to return to Washington State at zoom level **7**, center on that specific coordinate.
+
+Now we add the button:
+
+```{r}
+demo2012_home_map <- demo2012_layered_map %>%
+  addEasyButton(
+    easyButton(
+      icon = "fa-home",
+      title = "Zoom to Washington",
+      onClick = JS(textFun)
+    )
+  )
+
+demo2012_home_map
+```
+
+Here, `JS()` lets us pass a small JavaScript function to Leaflet.
+
+**Key idea**: A home button is a simple but very useful addition in exploratory interactive maps.
 
 
 # Interactive maps of spatial points
@@ -342,4 +408,4 @@ facet2026=sync(leafDEMO2016,leafREPU2016,ncol = 2)
 facet2026
 ```
 
-
+[Go to MAIN session](https://dacss-visual.github.io/mapviz/)
